@@ -49,6 +49,8 @@ class CodexScreen extends StatelessWidget {
             subtitle: '30%에서 다음 보너스: +1 공격',
           ),
           const SizedBox(height: 14),
+          const _BonusGrid(),
+          const SizedBox(height: 14),
           const Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -260,3 +262,145 @@ class _CodexCard extends StatelessWidget {
     );
   }
 }
+
+class _BonusGrid extends StatelessWidget {
+  const _BonusGrid();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _BonusCard(
+            rarity: '일반',
+            level: 0,
+            collectionRate: 20,
+            bonus: '미활성화',
+            cost: 10,
+            rarityColor: Colors.white70,
+            isActive: false,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _BonusCard(
+            rarity: '희귀',
+            level: 0,
+            collectionRate: 10,
+            bonus: '미활성화',
+            cost: 20,
+            rarityColor: const Color(0xFF5FD1B7),
+            isActive: false,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BonusCard extends StatelessWidget {
+  const _BonusCard({
+    required this.rarity,
+    required this.level,
+    required this.collectionRate,
+    required this.bonus,
+    required this.cost,
+    required this.rarityColor,
+    required this.isActive,
+  });
+
+  final String rarity;
+  final int level;
+  final int collectionRate;
+  final String bonus;
+  final int cost;
+  final Color rarityColor;
+  final bool isActive;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0E1512).withOpacity(0.6),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isActive ? rarityColor.withOpacity(0.4) : Colors.white24,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                rarity.toUpperCase(),
+                style: TextStyle(
+                  fontSize: 10,
+                  letterSpacing: 1.2,
+                  color: rarityColor,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF162019).withOpacity(0.7),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'LV.$level',
+                  style: const TextStyle(
+                    fontSize: 9,
+                    color: Colors.white60,
+                    fontFamily: 'Galmuri11',
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '$collectionRate%',
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFFE7C46A),
+              fontFamily: 'Galmuri11',
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            bonus,
+            style: TextStyle(
+              fontSize: 11,
+              color: isActive ? const Color(0xFF5FD1B7) : Colors.white38,
+              fontFamily: 'Galmuri11',
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(
+                Icons.auto_awesome,
+                size: 12,
+                color: Colors.white38,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '룬 $cost',
+                style: const TextStyle(
+                  fontSize: 10,
+                  color: Colors.white38,
+                  fontFamily: 'Galmuri11',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+

@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../shared/providers/auth_provider.dart';
-import '../../../shared/providers/dungeon_provider.dart';
+import '../../../shared/models/player_model.dart';
+import '../../../shared/providers/app_providers.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -16,6 +16,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _showTitle = false;
   bool _showMeta = false;
   bool _showActions = false;
+
+  String _formatTokenCooldown(int seconds) {
+    if (seconds <= 0) return '가득 참';
+    final hours = seconds ~/ 3600;
+    final minutes = (seconds % 3600) ~/ 60;
+    final secs = seconds % 60;
+    String twoDigits(int value) => value.toString().padLeft(2, '0');
+    if (hours > 0) {
+      return '$hours:${twoDigits(minutes)}:${twoDigits(secs)}';
+    }
+    return '${twoDigits(minutes)}:${twoDigits(secs)}';
+  }
 
   @override
   void initState() {
@@ -37,6 +49,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
+    // Firestore 데이터 한 번에 가져오기
+    final gameData = ref.watch(gameDataProvider).value;
+    final authData = ref.watch(authProvider);
+    final dungeonData = ref.watch(dungeonProvider);
 
     return Scaffold(
       body: Stack(
@@ -97,7 +113,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           border: Border.all(color: Colors.white24),
                         ),
                         child: const Text(
-                          '버전 v1.0.0',
+                          '베타 v1.0.0',
                           style: TextStyle(
                             color: Colors.white70,
                             fontSize: 11,
@@ -111,10 +127,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         icon: const Icon(Icons.menu_book_outlined),
                         color: Colors.white70,
                       ),
-                      _LogoutButton(onPressed: () {
-                        ref.read(authProvider.notifier).logout();
-                        context.go('/login');
-                      }),
+                      IconButton(
+                        onPressed: () => context.go('/settings'),
+                        icon: const Icon(Icons.settings_outlined),
+                        color: Colors.white70,
+                      ),
                     ],
                   ),
                   const SizedBox(height: 28),
@@ -155,16 +172,40 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     child: AnimatedSlide(
                       duration: const Duration(milliseconds: 380),
                       offset: _showMeta ? Offset.zero : const Offset(0, 0.12),
-                      child: Row(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _StatPill(
-                              label: '룬',
-                              value:
-                                  '${ref.watch(dungeonProvider).player.runes}'),
-                          const SizedBox(width: 10),
-                          const _StatPill(label: '코덱스', value: '27%'),
-                          const SizedBox(width: 10),
-                          const _StatPill(label: '자동', value: 'ON'),
+                          Row(
+                            children: [
+                              _StatPill(
+                                label: '토큰',
+                                value: '${dungeonData.player.tokens}',
+                              ),
+                              const SizedBox(width: 10),
+                              _StatPill(
+                                label: '코덱스',
+                                value: '${gameData?.codexEntries.length ?? 0}개',
+                              ),
+                              const SizedBox(width: 10),
+                              const _StatPill(label: '자동', value: 'ON'),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            dungeonData.tokenCooldownSeconds > 0
+                                ? '다음 토큰까지 ${_formatTokenCooldown(dungeonData.tokenCooldownSeconds)}'
+                                : '토큰 가득 참',
+                            style: const TextStyle(
+                              color: Colors.white60,
+                              fontSize: 11,
+                              fontFamily: 'Galmuri11',
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          _CharacterStatsCard(
+                            player: dungeonData.player,
+                            nickname: authData.userData?.nickname ?? '모험가',
+                          ),
                         ],
                       ),
                     ),
@@ -184,13 +225,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             subtitle: '도트 던전에서 모험을 시작합니다.',
                             icon: Icons.bolt_outlined,
                             onTap: () {
-                              final runes =
-                                  ref.watch(dungeonProvider).player.runes;
-                              if (runes < 1) {
+                              final tokens = dungeonData.player.tokens;
+                              if (tokens < 1) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content:
-                                        Text('룬이 부족합니다. (필요: 1개, 보유: $runes개)'),
+                                        Text('토큰이 부족합니다. (필요: 1개, 보유: $tokens개)'),
                                     backgroundColor: const Color(0xFFE7C46A),
                                   ),
                                 );
@@ -198,13 +238,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 context.go('/dungeon');
                               }
                             },
-                            isDisabled:
-                                ref.watch(dungeonProvider).player.runes < 1,
+                            isDisabled: dungeonData.player.tokens < 1,
                           ),
                           const SizedBox(height: 12),
                           _ActionCard(
-                            title: '아이템 도감',
-                            subtitle: '획득한 아이템 및 보너스 확인하기.',
+                            title: '코덱스 보기',
+                            subtitle: '획득한 코덱스 및 보너스 확인하기.',
                             icon: Icons.auto_awesome_mosaic_outlined,
                             onTap: () => context.go('/codex'),
                             isSecondary: true,
@@ -353,6 +392,319 @@ class _StatPill extends StatelessWidget {
   }
 }
 
+class _CharacterStatsCard extends StatelessWidget {
+  const _CharacterStatsCard({
+    required this.player,
+    required this.nickname,
+  });
+
+  final PlayerModel player;
+  final String nickname;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0E1512).withOpacity(0.75),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                '캐릭터',
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: Color(0xFFF3F8F2),
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  nickname,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFFE7C46A),
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'NeoDGM',
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // 첫 번째 행
+          Row(
+            children: [
+              Expanded(
+                child: _StatTile(
+                  label: '레벨',
+                  value: '${player.level}',
+                  icon: Icons.star_outline,
+                  color: const Color(0xFFE7C46A),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _HpStatTile(
+                  currentHp: player.currentHp,
+                  maxHp: player.maxHp,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _ExpBar(
+            currentExp: player.currentExp,
+            expToNext: player.expToNext,
+          ),
+          const SizedBox(height: 8),
+          // 두 번째 행
+          Row(
+            children: [
+              Expanded(
+                child: _StatTile(
+                  label: '공격',
+                  value: '${player.attack}',
+                  icon: Icons.flash_on,
+                  color: const Color(0xFFFF6B6B),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _StatTile(
+                  label: '방어',
+                  value: '${player.defense}',
+                  icon: Icons.shield_outlined,
+                  color: const Color(0xFF5FD1B7),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _StatTile(
+                  label: '행운',
+                  value: '${player.luck}',
+                  icon: Icons.local_fire_department_outlined,
+                  color: const Color(0xFFFFD93D),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExpBar extends StatelessWidget {
+  const _ExpBar({required this.currentExp, required this.expToNext});
+
+  final int currentExp;
+  final int expToNext;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = expToNext <= 0
+        ? 0.0
+        : (currentExp / expToNext).clamp(0.0, 1.0);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF162019).withOpacity(0.7),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.auto_graph, size: 12, color: Colors.white60),
+              const SizedBox(width: 6),
+              const Text(
+                '경험치',
+                style: TextStyle(
+                  fontSize: 9,
+                  color: Colors.white60,
+                  letterSpacing: 0.6,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '$currentExp/$expToNext',
+                style: const TextStyle(
+                  fontSize: 10,
+                  color: Color(0xFFE7C46A),
+                  fontWeight: FontWeight.w700,
+                  fontFamily: 'Galmuri11',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8,
+              backgroundColor: const Color(0xFF1A2420),
+              valueColor: const AlwaysStoppedAnimation<Color>(
+                Color(0xFFE7C46A),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatTile extends StatelessWidget {
+  const _StatTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF162019).withOpacity(0.8),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 12, color: color),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 8,
+                  color: Colors.white60,
+                  letterSpacing: 0.6,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 12,
+              color: color,
+              fontWeight: FontWeight.w700,
+              fontFamily: 'Galmuri11',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HpStatTile extends StatelessWidget {
+  const _HpStatTile({required this.currentHp, required this.maxHp});
+
+  final int currentHp;
+  final int maxHp;
+
+  @override
+  Widget build(BuildContext context) {
+    final hpPercent = currentHp / maxHp;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF162019).withOpacity(0.8),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFF5FD1B7).withOpacity(0.3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.favorite_outlined, size: 12, color: const Color(0xFF5FD1B7)),
+              const SizedBox(width: 4),
+              Text(
+                'HP',
+                style: TextStyle(
+                  fontSize: 8,
+                  color: Colors.white60,
+                  letterSpacing: 0.6,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Expanded(
+                child: Stack(
+                  children: [
+                    Container(
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: Colors.white10,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                    Container(
+                      width: (hpPercent * 100).isFinite
+                          ? (hpPercent * 100).toStringAsFixed(0).isEmpty
+                              ? 0
+                              : hpPercent * 100
+                          : 0,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF5FD1B7),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '$currentHp',
+                style: const TextStyle(
+                  fontSize: 10,
+                  color: Color(0xFF5FD1B7),
+                  fontWeight: FontWeight.w700,
+                  fontFamily: 'Galmuri11',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _Orb extends StatelessWidget {
   const _Orb({required this.size, required this.color});
 
@@ -379,18 +731,4 @@ class _Orb extends StatelessWidget {
   }
 }
 
-class _LogoutButton extends StatelessWidget {
-  const _LogoutButton({required this.onPressed});
 
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      onPressed: onPressed,
-      icon: const Icon(Icons.logout),
-      color: Colors.white70,
-      tooltip: '로그아웃',
-    );
-  }
-}

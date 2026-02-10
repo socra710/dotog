@@ -2,6 +2,7 @@
 enum Rarity {
   common('일반', 'common'),
   rare('희귀', 'rare'),
+  epic('에픽', 'epic'),
   legendary('전설', 'legendary');
 
   const Rarity(this.label, this.code);

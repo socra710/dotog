@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../data/firestore_service.dart';
 import '../models/user_model.dart';
+import 'app_providers.dart';
 
 class AuthState {
   const AuthState({
@@ -21,7 +22,8 @@ class AuthState {
   final bool isLoading;
   final String? error;
 
-  String? get username => user?.displayName ?? user?.email;
+  String? get username =>
+      userData?.nickname ?? user?.displayName ?? user?.email;
 
   AuthState copyWith({
     bool? isLoggedIn,
@@ -54,8 +56,10 @@ class AuthState {
 
 class AuthNotifier extends Notifier<AuthState> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirestoreService _firestoreService = FirestoreService();
   late final GoogleSignIn _googleSignIn;
+  
+  // FirestoreService는 Provider를 통해 가져옴
+  FirestoreService get _firestoreService => ref.read(firestoreServiceProvider);
 
   AuthNotifier() {
     // 웹 플랫폼에서는 clientId가 필요하지 않음 (index.html에서 설정)
@@ -67,24 +71,12 @@ class AuthNotifier extends Notifier<AuthState> {
   @override
   AuthState build() {
     // 인증 상태 스트림 구독
+    // signInWithGoogle()에서 이미 Firestore 데이터를 로드하므로
+    // 여기서는 로그아웃 처리만 담당
     final subscription = _auth.authStateChanges().listen((User? user) async {
-      if (user != null) {
-        // Firestore에서 유저 데이터 로드
-        try {
-          final userData = await _firestoreService.getUser(user.uid);
-          state = AuthState(
-            isLoggedIn: true,
-            user: user,
-            userData: userData,
-          );
-        } catch (e) {
-          // Firestore 로드 실패 시 Firebase Auth 유저만 사용
-          state = AuthState.authenticated(user);
-        }
-      } else {
-        if (state.isLoggedIn) {
-          state = AuthState.initial();
-        }
+      if (user == null && state.isLoggedIn) {
+        // 로그아웃 처리
+        state = AuthState.initial();
       }
     });
 
@@ -93,12 +85,26 @@ class AuthNotifier extends Notifier<AuthState> {
       subscription.cancel();
     });
 
-    // 초기 상태 반환
+    // 초기 상태: 현재 로그인된 유저가 있으면 Firestore에서 데이터 로드
     final currentUser = _auth.currentUser;
     if (currentUser != null) {
+      // 초기 로딩 시에만 Firestore 조회 (비동기 처리)
+      _loadUserData(currentUser);
       return AuthState.authenticated(currentUser);
     }
     return AuthState.initial();
+  }
+
+  /// 유저 데이터 로딩 (초기화 시에만 사용)
+  Future<void> _loadUserData(User user) async {
+    try {
+      final userData = await _firestoreService.getUser(user.uid);
+      if (userData != null) {
+        state = state.copyWith(userData: userData);
+      }
+    } catch (e) {
+      debugPrint('유저 데이터 로딩 실패: $e');
+    }
   }
 
   Future<void> signInWithGoogle() async {
@@ -127,13 +133,19 @@ class AuthNotifier extends Notifier<AuthState> {
       // Firebase로 로그인
       final userCredential = await _auth.signInWithCredential(credential);
 
-      // Firestore에 유저 저장/업데이트 (토큰 포함)
+      // Firestore에 유저 저장/업데이트 및 게임 데이터 초기화 (한 번만 호출)
       if (userCredential.user != null) {
-        final userData = await _firestoreService.createOrUpdateUser(
-          userCredential.user!,
-          accessToken: googleAuth.accessToken,
-          idToken: googleAuth.idToken,
-        );
+        // 병렬 처리로 Firestore 읽기/쓰기 최적화
+        final results = await Future.wait([
+          _firestoreService.createOrUpdateUser(
+            userCredential.user!,
+            accessToken: googleAuth.accessToken,
+            idToken: googleAuth.idToken,
+          ),
+          _firestoreService.getOrCreateGameData(userCredential.user!.uid),
+        ]);
+        
+        final userData = results[0] as UserModel?;
 
         // 상태 업데이트 (유저 데이터 포함)
         state = state.copyWith(
@@ -169,6 +181,29 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
+  /// 닉네임 변경
+  Future<void> updateNickname(String nickname) async {
+    final user = state.user;
+    if (user == null) return;
+
+    final trimmed = nickname.trim();
+    if (trimmed.isEmpty) return;
+
+    try {
+      state = state.copyWith(isLoading: true, error: null);
+      final userData = await _firestoreService.updateNickname(
+        user.uid,
+        trimmed,
+      );
+      state = state.copyWith(userData: userData, isLoading: false);
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: '닉네임 변경 실패: ${e.toString()}',
+      );
+    }
+  }
+
   Future<void> logout() async {
     try {
       await _googleSignIn.signOut();
@@ -177,6 +212,35 @@ class AuthNotifier extends Notifier<AuthState> {
     } catch (e) {
       state = state.copyWith(
         error: '로그아웃 실패: ${e.toString()}',
+      );
+    }
+  }
+
+  /// 게임 데이터 초기화
+  Future<void> resetGameData() async {
+    final user = state.user;
+    if (user == null) return;
+
+    try {
+      state = state.copyWith(isLoading: true, error: null);
+      
+      // 게임 데이터 초기화
+      await _firestoreService.resetGameData(user.uid);
+      
+      // 닉네임 변경 횟수 리셋
+      await _firestoreService.resetNicknameChangeCount(user.uid);
+      
+      // 최신 유저 데이터 다시 로드
+      final updatedUserData = await _firestoreService.getUser(user.uid);
+      
+      state = state.copyWith(
+        isLoading: false,
+        userData: updatedUserData,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: '데이터 초기화 실패: ${e.toString()}',
       );
     }
   }

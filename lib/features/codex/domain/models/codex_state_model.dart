@@ -1,3 +1,4 @@
+import '../../../../shared/models/codex_bonus_model.dart';
 import '../../../../shared/models/codex_entry_model.dart';
 import '../../../../shared/models/rarity.dart';
 
@@ -6,10 +7,12 @@ class CodexStateModel {
   const CodexStateModel({
     required this.entries,
     required this.selectedRarity,
+    required this.bonusState,
   });
 
   final List<CodexEntryModel> entries;
   final Rarity? selectedRarity; // null이면 '전체' 필터
+  final CodexBonusState bonusState;
 
   /// 수집률 계산
   double get completionRate {
@@ -34,6 +37,21 @@ class CodexStateModel {
     return 1.0;
   }
 
+  /// 등급별 수집률 계산 (0-100 퍼센트)
+  int getCollectionRateByRarity(Rarity rarity) {
+    final rarityEntries = entries.where((e) => e.item.rarity == rarity).toList();
+    if (rarityEntries.isEmpty) return 0;
+    final collected = rarityEntries.where((e) => e.collected).length;
+    return ((collected / rarityEntries.length) * 100).round();
+  }
+
+  /// 등급별 수집 아이템 수 / 전체 수
+  ({int collected, int total}) getCollectionByRarity(Rarity rarity) {
+    final rarityEntries = entries.where((e) => e.item.rarity == rarity).toList();
+    final collected = rarityEntries.where((e) => e.collected).length;
+    return (collected: collected, total: rarityEntries.length);
+  }
+
   /// 필터링된 항목 반환
   List<CodexEntryModel> get filteredEntries {
     if (selectedRarity == null) return entries;
@@ -43,12 +61,14 @@ class CodexStateModel {
   CodexStateModel copyWith({
     List<CodexEntryModel>? entries,
     Rarity? selectedRarity,
+    CodexBonusState? bonusState,
     bool clearRarity = false,
   }) {
     return CodexStateModel(
       entries: entries ?? this.entries,
       selectedRarity:
           clearRarity ? null : (selectedRarity ?? this.selectedRarity),
+      bonusState: bonusState ?? this.bonusState,
     );
   }
 
@@ -78,5 +98,12 @@ class CodexStateModel {
     }).toList();
 
     return copyWith(entries: updatedEntries);
+  }
+
+  /// 등급별 보너스 업그레이드
+  CodexStateModel upgradeBonus(Rarity rarity) {
+    final collectionRate = getCollectionRateByRarity(rarity);
+    final newBonusState = bonusState.upgradeRarity(rarity, collectionRate);
+    return copyWith(bonusState: newBonusState);
   }
 }

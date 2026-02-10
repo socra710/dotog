@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 class AtmosphericScaffold extends StatelessWidget {
   const AtmosphericScaffold({
@@ -66,7 +67,13 @@ class AtmosphericScaffold extends StatelessWidget {
                     children: [
                       if (showBack)
                         IconButton(
-                          onPressed: () => Navigator.of(context).maybePop(),
+                          onPressed: () {
+                            if (context.canPop()) {
+                              context.pop();
+                            } else {
+                              context.go('/');
+                            }
+                          },
                           icon: const Icon(Icons.arrow_back),
                           color: Colors.white70,
                         ),

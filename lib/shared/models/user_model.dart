@@ -7,6 +7,9 @@ class UserModel {
     required this.email,
     this.displayName,
     this.photoURL,
+    this.nickname,
+    this.nicknameSetAt,
+    this.nicknameChangeCount = 0,
     required this.createdAt,
     required this.lastLoginAt,
     this.fcmToken,
@@ -18,6 +21,9 @@ class UserModel {
   final String email;
   final String? displayName;
   final String? photoURL;
+  final String? nickname;
+  final DateTime? nicknameSetAt;
+  final int nicknameChangeCount;
   final DateTime createdAt;
   final DateTime lastLoginAt;
   final String? fcmToken;
@@ -29,6 +35,9 @@ class UserModel {
     String? email,
     String? displayName,
     String? photoURL,
+    String? nickname,
+    DateTime? nicknameSetAt,
+    int? nicknameChangeCount,
     DateTime? createdAt,
     DateTime? lastLoginAt,
     String? fcmToken,
@@ -40,6 +49,9 @@ class UserModel {
       email: email ?? this.email,
       displayName: displayName ?? this.displayName,
       photoURL: photoURL ?? this.photoURL,
+      nickname: nickname ?? this.nickname,
+      nicknameSetAt: nicknameSetAt ?? this.nicknameSetAt,
+      nicknameChangeCount: nicknameChangeCount ?? this.nicknameChangeCount,
       createdAt: createdAt ?? this.createdAt,
       lastLoginAt: lastLoginAt ?? this.lastLoginAt,
       fcmToken: fcmToken ?? this.fcmToken,
@@ -56,6 +68,9 @@ class UserModel {
       email: data['email'] as String,
       displayName: data['displayName'] as String?,
       photoURL: data['photoURL'] as String?,
+      nickname: data['nickname'] as String?,
+      nicknameSetAt: (data['nicknameSetAt'] as Timestamp?)?.toDate(),
+      nicknameChangeCount: data['nicknameChangeCount'] as int? ?? 0,
       createdAt: (data['createdAt'] as Timestamp).toDate(),
       lastLoginAt: (data['lastLoginAt'] as Timestamp).toDate(),
       fcmToken: data['fcmToken'] as String?,
@@ -70,6 +85,10 @@ class UserModel {
       'email': email,
       'displayName': displayName,
       'photoURL': photoURL,
+      'nickname': nickname,
+      'nicknameSetAt':
+          nicknameSetAt == null ? null : Timestamp.fromDate(nicknameSetAt!),
+      'nicknameChangeCount': nicknameChangeCount,
       'createdAt': Timestamp.fromDate(createdAt),
       'lastLoginAt': Timestamp.fromDate(lastLoginAt),
       'fcmToken': fcmToken,
@@ -91,6 +110,9 @@ class UserModel {
       email: email,
       displayName: displayName,
       photoURL: photoURL,
+      nickname: null,
+      nicknameSetAt: null,
+      nicknameChangeCount: 0,
       createdAt: now,
       lastLoginAt: now,
     );
