@@ -10,6 +10,8 @@ class UserModel {
     required this.createdAt,
     required this.lastLoginAt,
     this.fcmToken,
+    this.accessToken,
+    this.idToken,
   });
 
   final String uid;
@@ -19,6 +21,8 @@ class UserModel {
   final DateTime createdAt;
   final DateTime lastLoginAt;
   final String? fcmToken;
+  final String? accessToken;
+  final String? idToken;
 
   UserModel copyWith({
     String? uid,
@@ -28,6 +32,8 @@ class UserModel {
     DateTime? createdAt,
     DateTime? lastLoginAt,
     String? fcmToken,
+    String? accessToken,
+    String? idToken,
   }) {
     return UserModel(
       uid: uid ?? this.uid,
@@ -37,6 +43,8 @@ class UserModel {
       createdAt: createdAt ?? this.createdAt,
       lastLoginAt: lastLoginAt ?? this.lastLoginAt,
       fcmToken: fcmToken ?? this.fcmToken,
+      accessToken: accessToken ?? this.accessToken,
+      idToken: idToken ?? this.idToken,
     );
   }
 
@@ -51,6 +59,8 @@ class UserModel {
       createdAt: (data['createdAt'] as Timestamp).toDate(),
       lastLoginAt: (data['lastLoginAt'] as Timestamp).toDate(),
       fcmToken: data['fcmToken'] as String?,
+      accessToken: data['accessToken'] as String?,
+      idToken: data['idToken'] as String?,
     );
   }
 
@@ -63,6 +73,8 @@ class UserModel {
       'createdAt': Timestamp.fromDate(createdAt),
       'lastLoginAt': Timestamp.fromDate(lastLoginAt),
       'fcmToken': fcmToken,
+      'accessToken': accessToken,
+      'idToken': idToken,
     };
   }
 

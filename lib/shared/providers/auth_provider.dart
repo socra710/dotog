@@ -1,4 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../data/firestore_service.dart';
@@ -129,6 +131,8 @@ class AuthNotifier extends Notifier<AuthState> {
       if (userCredential.user != null) {
         final userData = await _firestoreService.createOrUpdateUser(
           userCredential.user!,
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
         );
 
         // 상태 업데이트 (유저 데이터 포함)
@@ -138,6 +142,22 @@ class AuthNotifier extends Notifier<AuthState> {
           userData: userData,
           isLoading: false,
         );
+
+        // FCM 토큰 가져와서 저장 (웹 + 모바일)
+        try {
+          final fcmToken = kIsWeb
+              ? await FirebaseMessaging.instance.getToken(
+                  vapidKey:
+                      'BKnDFPCHPyI4Xn7Pm4TgIUTHwbemVFAEY4UD6EHK3ysvs4vFsXQRuIvIXhFa44BiBsERa7cG-bsihZuDAPfsKIM',
+                )
+              : await FirebaseMessaging.instance.getToken();
+
+          if (fcmToken != null) {
+            await updateFcmToken(fcmToken);
+          }
+        } catch (e) {
+          debugPrint('FCM 토큰 가져오기 실패: $e');
+        }
       }
 
       // authStateChanges 리스너가 상태를 업데이트함

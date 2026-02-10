@@ -25,20 +25,26 @@ class FirestoreService {
   ///
   /// 신규 유저: 새 문서 생성
   /// 기존 유저: lastLoginAt만 업데이트
-  Future<UserModel> createOrUpdateUser(User firebaseUser) async {
+  Future<UserModel> createOrUpdateUser(
+    User firebaseUser, {
+    String? accessToken,
+    String? idToken,
+  }) async {
     final userDoc = _userDoc(firebaseUser.uid);
     final docSnapshot = await userDoc.get();
 
     final now = DateTime.now();
 
     if (docSnapshot.exists) {
-      // 기존 유저 - lastLoginAt 업데이트
+      // 기존 유저 - lastLoginAt 및 토큰 업데이트
       await userDoc.update({
         'lastLoginAt': Timestamp.fromDate(now),
         // 프로필 정보도 최신화 (Google 계정에서 변경될 수 있음)
         'displayName': firebaseUser.displayName,
         'photoURL': firebaseUser.photoURL,
         'email': firebaseUser.email,
+        'accessToken': accessToken,
+        'idToken': idToken,
       });
 
       // 업데이트된 데이터 조회
@@ -51,6 +57,9 @@ class FirestoreService {
         email: firebaseUser.email!,
         displayName: firebaseUser.displayName,
         photoURL: firebaseUser.photoURL,
+      ).copyWith(
+        accessToken: accessToken,
+        idToken: idToken,
       );
 
       await userDoc.set(newUser.toFirestore());
