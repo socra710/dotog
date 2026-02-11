@@ -8,24 +8,26 @@ class CodexStateModel {
     required this.entries,
     required this.selectedRarity,
     required this.bonusState,
+    required this.totalItemsCount,
   });
 
   final List<CodexEntryModel> entries;
   final Rarity? selectedRarity; // null이면 '전체' 필터
   final CodexBonusState bonusState;
+  final int totalItemsCount; // Firestore items 컬렉션의 전체 아이템 수
 
-  /// 수집률 계산
+  /// 수집률 계산 (전체 아이템 수 기준)
   double get completionRate {
-    if (entries.isEmpty) return 0.0;
+    if (totalItemsCount == 0) return 0.0;
     final collected = entries.where((e) => e.collected).length;
-    return collected / entries.length;
+    return collected / totalItemsCount;
   }
 
   /// 수집된 항목 수
   int get collectedCount => entries.where((e) => e.collected).length;
 
-  /// 전체 항목 수
-  int get totalCount => entries.length;
+  /// 전체 항목 수 (Firestore items 컬렉션 기준)
+  int get totalCount => totalItemsCount;
 
   /// 다음 보너스까지 남은 수집률
   double get nextBonusThreshold {
@@ -39,7 +41,8 @@ class CodexStateModel {
 
   /// 등급별 수집률 계산 (0-100 퍼센트)
   int getCollectionRateByRarity(Rarity rarity) {
-    final rarityEntries = entries.where((e) => e.item.rarity == rarity).toList();
+    final rarityEntries =
+        entries.where((e) => e.item.rarity == rarity).toList();
     if (rarityEntries.isEmpty) return 0;
     final collected = rarityEntries.where((e) => e.collected).length;
     return ((collected / rarityEntries.length) * 100).round();
@@ -47,7 +50,8 @@ class CodexStateModel {
 
   /// 등급별 수집 아이템 수 / 전체 수
   ({int collected, int total}) getCollectionByRarity(Rarity rarity) {
-    final rarityEntries = entries.where((e) => e.item.rarity == rarity).toList();
+    final rarityEntries =
+        entries.where((e) => e.item.rarity == rarity).toList();
     final collected = rarityEntries.where((e) => e.collected).length;
     return (collected: collected, total: rarityEntries.length);
   }
@@ -62,6 +66,7 @@ class CodexStateModel {
     List<CodexEntryModel>? entries,
     Rarity? selectedRarity,
     CodexBonusState? bonusState,
+    int? totalItemsCount,
     bool clearRarity = false,
   }) {
     return CodexStateModel(
@@ -69,6 +74,7 @@ class CodexStateModel {
       selectedRarity:
           clearRarity ? null : (selectedRarity ?? this.selectedRarity),
       bonusState: bonusState ?? this.bonusState,
+      totalItemsCount: totalItemsCount ?? this.totalItemsCount,
     );
   }
 

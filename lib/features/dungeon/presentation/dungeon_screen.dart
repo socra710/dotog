@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/providers/app_providers.dart';
-import '../../../shared/providers/dungeon_provider.dart';
 import '../../../shared/widgets/atmospheric_scaffold.dart';
 import '../domain/models/combat_log_model.dart';
 import '../domain/models/dungeon_state_model.dart';
@@ -65,7 +64,15 @@ class _DungeonScreenState extends ConsumerState<DungeonScreen>
   Widget build(BuildContext context) {
     final dungeonState = ref.watch(dungeonProvider);
     final dungeonNotifier = ref.read(dungeonProvider.notifier);
+    final basePlayer = ref.watch(
+      gameDataProvider.select((value) => value.value?.player),
+    );
     final isGenerating = dungeonNotifier.isGenerating;
+
+    final baseMaxHp = basePlayer?.maxHp ?? dungeonState.player.maxHp;
+    final bonusMaxHp = (dungeonState.player.maxHp - baseMaxHp).clamp(0, 9999);
+    final hpValue =
+        '${dungeonState.player.currentHp}/${dungeonState.player.maxHp}';
 
     // 새 로그가 추가될 때 자동 스크롤
     if (dungeonState.logs.isNotEmpty) {
@@ -95,7 +102,12 @@ class _DungeonScreenState extends ConsumerState<DungeonScreen>
       ],
       body: isGenerating
           ? _buildLoadingView()
-          : _buildDungeonView(dungeonState, dungeonNotifier),
+          : _buildDungeonView(
+              dungeonState,
+              dungeonNotifier,
+              hpValue,
+              bonusMaxHp,
+            ),
     );
   }
 
@@ -165,7 +177,11 @@ class _DungeonScreenState extends ConsumerState<DungeonScreen>
   }
 
   Widget _buildDungeonView(
-      DungeonStateModel dungeonState, DungeonNotifier dungeonNotifier) {
+    DungeonStateModel dungeonState,
+    DungeonNotifier dungeonNotifier,
+    String hpValue,
+    int bonusMaxHp,
+  ) {
     return Column(
       children: [
         Row(
@@ -174,8 +190,8 @@ class _DungeonScreenState extends ConsumerState<DungeonScreen>
             const SizedBox(width: 10),
             _StatPill(
               label: 'HP',
-              value:
-                  '${dungeonState.player.currentHp}/${dungeonState.player.maxHp}',
+              value: hpValue,
+              bonusValue: bonusMaxHp,
             ),
             const SizedBox(width: 10),
             _StatPill(label: '토큰', value: '${dungeonState.player.tokens}'),
@@ -288,10 +304,15 @@ class _Badge extends StatelessWidget {
 }
 
 class _StatPill extends StatelessWidget {
-  const _StatPill({required this.label, required this.value});
+  const _StatPill({
+    required this.label,
+    required this.value,
+    this.bonusValue,
+  });
 
   final String label;
   final String value;
+  final int? bonusValue;
 
   @override
   Widget build(BuildContext context) {
@@ -322,6 +343,18 @@ class _StatPill extends StatelessWidget {
               fontFamily: 'Galmuri11',
             ),
           ),
+          if ((bonusValue ?? 0) > 0) ...[
+            const SizedBox(width: 6),
+            Text(
+              '+${bonusValue!}',
+              style: const TextStyle(
+                fontSize: 10,
+                color: Color(0xFF5FD1B7),
+                fontWeight: FontWeight.w700,
+                fontFamily: 'Galmuri11',
+              ),
+            ),
+          ],
         ],
       ),
     );

@@ -2,17 +2,18 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "DOTOG (Windows)",
-      "request": "launch",
-      "type": "dart",
-      "deviceId": "windows"
-    },
-    {
       "name": "DOTOG (Chrome)",
       "request": "launch",
       "type": "dart",
       "deviceId": "chrome",
-      "args": ["--web-port", "5000", "--web-hostname", "localhost"]
+      "flutterMode": "debug",
+      "args": ["--web-port=5000"]
+    },
+    {
+      "name": "DOTOG (Windows)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "windows"
     },
     {
       "name": "DOTOG (Edge)",

@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'rarity.dart';
 
 /// 아이템/유물 모델
@@ -30,5 +32,49 @@ class ItemModel {
     if (hpBonus > 0) bonuses.add('+$hpBonus 체력');
     if (luckBonus > 0) bonuses.add('+$luckBonus 운');
     return bonuses.join(', ');
+  }
+
+  /// Firestore 데이터로 변환
+  Map<String, dynamic> toFirestore() {
+    return {
+      'id': id,
+      'name': name,
+      'description': description,
+      'rarity': rarity.toFirestore(),
+      'attackBonus': attackBonus,
+      'defenseBonus': defenseBonus,
+      'hpBonus': hpBonus,
+      'luckBonus': luckBonus,
+      'createdAt': Timestamp.now(),
+    };
+  }
+
+  /// Firestore 문서에서 생성
+  factory ItemModel.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return ItemModel(
+      id: data['id'] as String? ?? doc.id,
+      name: data['name'] as String? ?? '',
+      description: data['description'] as String? ?? '',
+      rarity: Rarity.fromFirestore(data['rarity'] as String? ?? 'common'),
+      attackBonus: data['attackBonus'] as int? ?? 0,
+      defenseBonus: data['defenseBonus'] as int? ?? 0,
+      hpBonus: data['hpBonus'] as int? ?? 0,
+      luckBonus: data['luckBonus'] as int? ?? 0,
+    );
+  }
+
+  /// Map에서 생성 (Firestore 데이터용)
+  factory ItemModel.fromMap(Map<String, dynamic> data) {
+    return ItemModel(
+      id: data['id'] as String? ?? '',
+      name: data['name'] as String? ?? '',
+      description: data['description'] as String? ?? '',
+      rarity: Rarity.fromFirestore(data['rarity'] as String? ?? 'common'),
+      attackBonus: data['attackBonus'] as int? ?? 0,
+      defenseBonus: data['defenseBonus'] as int? ?? 0,
+      hpBonus: data['hpBonus'] as int? ?? 0,
+      luckBonus: data['luckBonus'] as int? ?? 0,
+    );
   }
 }

@@ -1,83 +1,191 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../shared/data/mock_items.dart';
+import '../../../shared/models/codex_bonus_model.dart';
 import '../../../shared/models/codex_entry_model.dart';
+import '../../../shared/models/rarity.dart';
 import '../../../shared/widgets/atmospheric_scaffold.dart';
+import '../domain/models/codex_state_model.dart';
+import 'codex_providers.dart';
 
-class CodexScreen extends StatelessWidget {
+class CodexScreen extends ConsumerWidget {
   const CodexScreen({super.key});
 
-  // Mock 코덱스 엔트리 생성
-  static final List<CodexEntryModel> _mockCodex = [
-    CodexEntryModel(
-      item: MockItems.items[0], // 구리 등불
-      collected: true,
-      discoveredAt: DateTime.now().subtract(const Duration(days: 3)),
-      encounterCount: 5,
-    ),
-    CodexEntryModel(
-      item: MockItems.items[1], // 룬 조각
-      collected: true,
-      discoveredAt: DateTime.now().subtract(const Duration(days: 2)),
-      encounterCount: 8,
-    ),
-    CodexEntryModel.undiscovered(MockItems.items[2]), // 안개 나침반
-    CodexEntryModel.undiscovered(MockItems.items[3]), // 망령의 인장
-    CodexEntryModel.undiscovered(MockItems.items[4]), // 황금 껍질
-    CodexEntryModel.undiscovered(MockItems.items[5]), // 침묵의 주상
-  ];
-
   @override
-  Widget build(BuildContext context) {
-    return AtmosphericScaffold(
-      title: '코덱스 기록',
-      subtitle: '수집률로 잠금 해제된 영구 보너스.',
-      badge: const _Badge(label: '수집'),
-      actions: [
-        IconButton(
-          onPressed: () {},
-          icon: const Icon(Icons.filter_alt_outlined),
-          color: Colors.white70,
-        ),
-      ],
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _ProgressCard(
-            percent: 0.27,
-            label: '27% 완료',
-            subtitle: '30%에서 다음 보너스: +1 공격',
-          ),
-          const SizedBox(height: 14),
-          const _BonusGrid(),
-          const SizedBox(height: 14),
-          const Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _FilterChip(label: '전체', isActive: true),
-              _FilterChip(label: '일반'),
-              _FilterChip(label: '희귀'),
-              _FilterChip(label: '전설'),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Expanded(
-            child: GridView.builder(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: 0.9,
-              ),
-              itemCount: _mockCodex.length,
-              itemBuilder: (context, index) {
-                final entry = _mockCodex[index];
-                return _CodexCard(entry: entry);
-              },
+  Widget build(BuildContext context, WidgetRef ref) {
+    final codexEntriesAsync = ref.watch(codexEntriesProvider);
+    final codexBonusAsync = ref.watch(codexBonusStateProvider);
+    final globalItemsAsync = ref.watch(globalItemsProvider);
+    final selectedRarity = ref.watch(codexRarityFilterProvider);
+
+    return codexEntriesAsync.when(
+      data: (entries) {
+        final bonusState = codexBonusAsync.value ?? CodexBonusState.initial();
+        final totalItemsCount = globalItemsAsync.value?.length ?? 0;
+        final state = CodexStateModel(
+          entries: entries,
+          selectedRarity: selectedRarity,
+          bonusState: bonusState,
+          totalItemsCount: totalItemsCount,
+        );
+        final completionPercent = (state.completionRate * 100).round();
+        final nextThresholdPercent = (state.nextBonusThreshold * 100).round();
+        final filteredEntries = state.filteredEntries;
+
+        return AtmosphericScaffold(
+          title: '코덱스 기록',
+          subtitle: '수집률로 잠금 해제된 영구 보너스.',
+          badge: const _Badge(label: '수집'),
+          body: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _ProgressCard(
+                  percent: state.completionRate,
+                  label: '$completionPercent% 완료',
+                  subtitle: '$nextThresholdPercent%에서 다음 보너스',
+                ),
+                const SizedBox(height: 14),
+                _BonusGrid(state: state),
+                const SizedBox(height: 18),
+                const Text(
+                  '수집한 아이템',
+                  style: TextStyle(
+                    color: Color(0xFFF3F8F2),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _FilterChip(
+                      label: '전체',
+                      isActive: selectedRarity == null,
+                      onTap: () {
+                        ref
+                            .read(codexRarityFilterProvider.notifier)
+                            .clearFilter();
+                      },
+                    ),
+                    _FilterChip(
+                      label: '일반',
+                      isActive: selectedRarity == Rarity.common,
+                      onTap: () {
+                        ref
+                            .read(codexRarityFilterProvider.notifier)
+                            .setFilter(Rarity.common);
+                      },
+                    ),
+                    _FilterChip(
+                      label: '희귀',
+                      isActive: selectedRarity == Rarity.rare,
+                      onTap: () {
+                        ref
+                            .read(codexRarityFilterProvider.notifier)
+                            .setFilter(Rarity.rare);
+                      },
+                    ),
+                    _FilterChip(
+                      label: '에픽',
+                      isActive: selectedRarity == Rarity.epic,
+                      onTap: () {
+                        ref
+                            .read(codexRarityFilterProvider.notifier)
+                            .setFilter(Rarity.epic);
+                      },
+                    ),
+                    _FilterChip(
+                      label: '전설',
+                      isActive: selectedRarity == Rarity.legendary,
+                      onTap: () {
+                        ref
+                            .read(codexRarityFilterProvider.notifier)
+                            .setFilter(Rarity.legendary);
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                filteredEntries.isEmpty
+                    ? Container(
+                        padding: const EdgeInsets.all(40),
+                        alignment: Alignment.center,
+                        child: const Column(
+                          children: [
+                            Icon(
+                              Icons.auto_awesome_outlined,
+                              size: 48,
+                              color: Colors.white38,
+                            ),
+                            SizedBox(height: 12),
+                            Text(
+                              '아직 수집한 아이템이 없습니다.',
+                              style: TextStyle(
+                                color: Colors.white60,
+                                fontSize: 13,
+                                fontFamily: 'Galmuri11',
+                              ),
+                            ),
+                            SizedBox(height: 6),
+                            Text(
+                              '던전을 탐험하여 아이템을 획득하세요!',
+                              style: TextStyle(
+                                color: Colors.white38,
+                                fontSize: 11,
+                                fontFamily: 'Galmuri11',
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                          childAspectRatio: 0.85,
+                        ),
+                        itemCount: filteredEntries.length,
+                        itemBuilder: (context, index) {
+                          final entry = filteredEntries[index];
+                          return _CodexCard(entry: entry);
+                        },
+                      ),
+                const SizedBox(height: 20),
+              ],
             ),
           ),
-        ],
+        );
+      },
+      loading: () => const AtmosphericScaffold(
+        title: '코덱스 기록',
+        subtitle: '수집률로 잠금 해제된 영구 보너스.',
+        badge: _Badge(label: '수집'),
+        body: Center(
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFE7C46A)),
+          ),
+        ),
+      ),
+      error: (error, stackTrace) => const AtmosphericScaffold(
+        title: '코덱스 기록',
+        subtitle: '수집률로 잠금 해제된 영구 보너스.',
+        badge: _Badge(label: '수집'),
+        body: Center(
+          child: Text(
+            '코덱스 데이터를 불러오지 못했습니다.',
+            style: TextStyle(
+              color: Colors.white60,
+              fontSize: 12,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -93,7 +201,7 @@ class _Badge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F1814).withOpacity(0.6),
+        color: const Color(0xFF0E1512).withOpacity(0.6),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white24),
       ),
@@ -153,9 +261,9 @@ class _ProgressCard extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: LinearProgressIndicator(
-              value: percent,
+              value: percent.clamp(0.0, 1.0),
               minHeight: 8,
-              backgroundColor: const Color(0xFF1A2420),
+              backgroundColor: const Color(0xFF162019),
               valueColor: const AlwaysStoppedAnimation<Color>(
                 Color(0xFF5FD1B7),
               ),
@@ -168,29 +276,38 @@ class _ProgressCard extends StatelessWidget {
 }
 
 class _FilterChip extends StatelessWidget {
-  const _FilterChip({required this.label, this.isActive = false});
+  const _FilterChip({
+    required this.label,
+    this.isActive = false,
+    this.onTap,
+  });
 
   final String label;
   final bool isActive;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: isActive
-            ? const Color(0xFFE7C46A).withOpacity(0.2)
-            : const Color(0xFF0E1512).withOpacity(0.6),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: isActive ? const Color(0xFFE7C46A) : Colors.white24,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isActive
+              ? const Color(0xFFE7C46A).withOpacity(0.2)
+              : const Color(0xFF0E1512).withOpacity(0.6),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isActive ? const Color(0xFFE7C46A) : Colors.white24,
+          ),
         ),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: isActive ? const Color(0xFFE7C46A) : Colors.white70,
-          fontSize: 12,
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isActive ? const Color(0xFFE7C46A) : Colors.white70,
+            fontSize: 12,
+          ),
         ),
       ),
     );
@@ -210,7 +327,7 @@ class _CodexCard extends StatelessWidget {
         color: const Color(0xFF0E1512).withOpacity(0.7),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: entry.collected ? const Color(0xFF5FD1B7) : Colors.white12,
+          color: entry.collected ? const Color(0xFF5FD1B7) : Colors.white24,
         ),
       ),
       child: Column(
@@ -221,7 +338,7 @@ class _CodexCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: const Color(0xFF162019),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white12),
+              border: Border.all(color: Colors.white24),
             ),
             child: Center(
               child: Icon(
@@ -245,7 +362,7 @@ class _CodexCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 10,
               letterSpacing: 1.1,
-              color: entry.collected ? Colors.white60 : Colors.white30,
+              color: entry.collected ? Colors.white60 : Colors.white38,
             ),
           ),
           const Spacer(),
@@ -264,34 +381,92 @@ class _CodexCard extends StatelessWidget {
 }
 
 class _BonusGrid extends StatelessWidget {
-  const _BonusGrid();
+  const _BonusGrid({required this.state});
+
+  final CodexStateModel state;
+
+  Color _rarityColor(Rarity rarity) {
+    switch (rarity) {
+      case Rarity.common:
+        return Colors.white70;
+      case Rarity.rare:
+        return const Color(0xFF5FD1B7);
+      case Rarity.epic:
+        return const Color(0xFFE7C46A);
+      case Rarity.legendary:
+        return const Color(0xFFE7C46A);
+    }
+  }
+
+  String _bonusLabel(CodexBonusConfig config) {
+    return config.isActive ? config.bonusSummary : '미활성화';
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    final bonusState = state.bonusState;
+    final common = bonusState.common;
+    final rare = bonusState.rare;
+    final epic = bonusState.epic;
+    final legendary = bonusState.legendary;
+
+    return Column(
       children: [
-        Expanded(
-          child: _BonusCard(
-            rarity: '일반',
-            level: 0,
-            collectionRate: 20,
-            bonus: '미활성화',
-            cost: 10,
-            rarityColor: Colors.white70,
-            isActive: false,
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: _BonusCard(
+                rarity: common.rarity.label,
+                level: common.level,
+                collectionRate: state.getCollectionRateByRarity(common.rarity),
+                bonus: _bonusLabel(common),
+                cost: common.upgradeCost,
+                rarityColor: _rarityColor(common.rarity),
+                isActive: common.isActive,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _BonusCard(
+                rarity: rare.rarity.label,
+                level: rare.level,
+                collectionRate: state.getCollectionRateByRarity(rare.rarity),
+                bonus: _bonusLabel(rare),
+                cost: rare.upgradeCost,
+                rarityColor: _rarityColor(rare.rarity),
+                isActive: rare.isActive,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _BonusCard(
-            rarity: '희귀',
-            level: 0,
-            collectionRate: 10,
-            bonus: '미활성화',
-            cost: 20,
-            rarityColor: const Color(0xFF5FD1B7),
-            isActive: false,
-          ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _BonusCard(
+                rarity: epic.rarity.label,
+                level: epic.level,
+                collectionRate: state.getCollectionRateByRarity(epic.rarity),
+                bonus: _bonusLabel(epic),
+                cost: epic.upgradeCost,
+                rarityColor: _rarityColor(epic.rarity),
+                isActive: epic.isActive,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _BonusCard(
+                rarity: legendary.rarity.label,
+                level: legendary.level,
+                collectionRate:
+                    state.getCollectionRateByRarity(legendary.rarity),
+                bonus: _bonusLabel(legendary),
+                cost: legendary.upgradeCost,
+                rarityColor: _rarityColor(legendary.rarity),
+                isActive: legendary.isActive,
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -382,7 +557,7 @@ class _BonusCard extends StatelessWidget {
           const SizedBox(height: 8),
           Row(
             children: [
-              Icon(
+              const Icon(
                 Icons.auto_awesome,
                 size: 12,
                 color: Colors.white38,
@@ -403,4 +578,3 @@ class _BonusCard extends StatelessWidget {
     );
   }
 }
-

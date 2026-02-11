@@ -16,4 +16,14 @@ enum Rarity {
       orElse: () => Rarity.common,
     );
   }
+
+  /// Firestore 저장용 문자열
+  String toFirestore() {
+    return code;
+  }
+
+  /// Firestore에서 복원
+  static Rarity fromFirestore(String value) {
+    return fromCode(value);
+  }
 }

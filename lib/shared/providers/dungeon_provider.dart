@@ -1,10 +1,17 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/dungeon/domain/models/combat_log_model.dart';
 import '../../features/dungeon/domain/models/dungeon_state_model.dart';
 import '../../features/dungeon/domain/models/log_type.dart';
+import '../data/firestore_service.dart';
+import '../models/codex_bonus_model.dart';
+import '../models/item_model.dart';
+import '../models/rarity.dart';
+import 'app_providers.dart';
+import 'game_data_provider.dart';
 
 /// 던전 생성에 필요한 토큰 비용
 const int dungeonTokenCost = 1;
@@ -83,19 +90,30 @@ class DungeonNotifier extends Notifier<DungeonStateModel> {
       return; // 토큰 부족
     }
 
-    // 초기화
-    state = DungeonStateModel.initial().copyWith(isActive: false);
+    // 초기화 + 코덱스 보너스 적용
+    final bonusState = ref.read(gameDataProvider).value?.codexBonusState ??
+        CodexBonusState.initial();
+    final bonusPlayer = state.player.applyCodexBonus(bonusState).copyWith(
+          currentHp: state.player.maxHp,
+        );
+    state = DungeonStateModel.initial()
+        .copyWith(isActive: false, player: bonusPlayer);
     _isGenerating = true;
 
     // AI 던전 생성 시뮬레이션 (2-4초)
-    await Future.delayed(const Duration(milliseconds: 2500));
+    // 이 시간 동안 새로운 아이템을 Firestore에 추가
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    // AI 아이템 생성 (50% 확률)
+    await _generateAndAddRandomItem();
+
+    await Future.delayed(const Duration(milliseconds: 2000));
 
     _isGenerating = false;
 
     // 토큰 소비 & 던전 시작
     final newTokens = state.player.tokens - dungeonTokenCost;
-    final newCooldown = newTokens < maxTokens &&
-            state.tokenCooldownSeconds == 0
+    final newCooldown = newTokens < maxTokens && state.tokenCooldownSeconds == 0
         ? tokenRespawnIntervalSeconds
         : state.tokenCooldownSeconds;
     state = state.copyWith(
@@ -205,5 +223,155 @@ class DungeonNotifier extends Notifier<DungeonStateModel> {
         CombatLogModel.loot('새로운 유물 발견: 구리 등불.'),
       CombatLogModel.system('코덱스 업데이트: 27% 완료.'),
     ];
+  }
+
+  /// AI 아이템 생성 및 Firestore 추가
+  ///
+  /// 등급별 확률:
+  /// - common: 50%
+  /// - rare: 30%
+  /// - epic: 15%
+  /// - legendary: 5%
+  Future<void> _generateAndAddRandomItem() async {
+    try {
+      final firestoreService = ref.read(firestoreServiceProvider);
+      final random = Random();
+
+      // 50% 확률로 아이템 생성
+      if (random.nextDouble() > 0.5) {
+        return;
+      }
+
+      // 등급 결정 (확률 기반)
+      final rarity = _selectRandomRarity(random);
+
+      // 랜덤 아이템 생성
+      final item = _createRandomItem(rarity, random);
+
+      // Firestore에 추가 (중복 체크)
+      await firestoreService.addItemIfNotExists(item);
+    } catch (e) {
+      // 에러 무시 (던전 생성은 계속 진행)
+    }
+  }
+
+  /// 등급별 확률로 랜덤 선택
+  Rarity _selectRandomRarity(Random random) {
+    final roll = random.nextDouble() * 100;
+    if (roll < 50) return Rarity.common; // 0-50: 50%
+    if (roll < 80) return Rarity.rare; // 50-80: 30%
+    if (roll < 95) return Rarity.epic; // 80-95: 15%
+    return Rarity.legendary; // 95-100: 5%
+  }
+
+  /// 랜덤 아이템 생성
+  ItemModel _createRandomItem(Rarity rarity, Random random) {
+    final adjectives = [
+      '고대의',
+      '잊혀진',
+      '어둠의',
+      '빛나는',
+      '부서진',
+      '저주받은',
+      '축복받은',
+      '불타는',
+      '얼어붙은',
+      '번개의',
+      '그림자',
+      '신성한',
+      '악마의',
+      '영원한',
+      '순간의',
+      '떠도는',
+      '침묵의',
+      '울부짖는',
+      '잠든',
+      '깨어난',
+    ];
+
+    final nouns = [
+      '검',
+      '방패',
+      '등불',
+      '반지',
+      '목걸이',
+      '투구',
+      '망토',
+      '갑옷',
+      '장화',
+      '장갑',
+      '지팡이',
+      '책',
+      '수정',
+      '유물',
+      '인장',
+      '부적',
+      '주사위',
+      '나침반',
+      '모래시계',
+      '거울',
+    ];
+
+    final descriptions = [
+      '오래된 힘이 깃들어 있다',
+      '미약하게 빛을 발한다',
+      '차가운 기운이 느껴진다',
+      '따뜻한 온기가 감돈다',
+      '알 수 없는 문자가 새겨져 있다',
+      '마법의 기운이 흐른다',
+      '시간의 흔적이 남아있다',
+      '어딘가 익숙한 느낌이다',
+      '강력한 힘이 봉인되어 있다',
+      '부서질 것 같지만 견고하다',
+    ];
+
+    final id =
+        'ai_${DateTime.now().millisecondsSinceEpoch}_${random.nextInt(9999)}';
+    final name =
+        '${adjectives[random.nextInt(adjectives.length)]} ${nouns[random.nextInt(nouns.length)]}';
+    final description = descriptions[random.nextInt(descriptions.length)];
+
+    // 등급에 따른 스탯 범위
+    final statRange = switch (rarity) {
+      Rarity.common => (min: 0, max: 2),
+      Rarity.rare => (min: 1, max: 4),
+      Rarity.epic => (min: 3, max: 7),
+      Rarity.legendary => (min: 5, max: 12),
+    };
+
+    // 랜덤 스탯 생성 (1-2개의 스탯만 보너스)
+    final statCount = random.nextInt(2) + 1;
+    var attackBonus = 0;
+    var defenseBonus = 0;
+    var hpBonus = 0;
+    var luckBonus = 0;
+
+    for (var i = 0; i < statCount; i++) {
+      final statType = random.nextInt(4);
+      final value =
+          statRange.min + random.nextInt(statRange.max - statRange.min + 1);
+
+      switch (statType) {
+        case 0:
+          attackBonus += value;
+        case 1:
+          defenseBonus += value;
+        case 2:
+          hpBonus += value;
+        case 3:
+          luckBonus += value;
+      }
+    }
+
+    return ItemModel(
+      id: id,
+      name: name,
+      description: description,
+      rarity: rarity,
+      attackBonus: attackBonus,
+      defenseBonus: defenseBonus,
+      hpBonus: hpBonus,
+      luckBonus: luckBonus,
+    );
   }
 }

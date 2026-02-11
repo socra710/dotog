@@ -1,3 +1,5 @@
+import 'codex_bonus_model.dart';
+
 /// 플레이어 상태 모델
 class PlayerModel {
   const PlayerModel({
@@ -19,11 +21,14 @@ class PlayerModel {
   final int attack;
   final int defense;
   final int luck;
+
   /// 토큰: 던전 진입 비용으로 사용
   final int tokens;
+
   /// 룬: 코덱스 보너스 활성화/업그레이드에 사용
   final int runes;
   final int level;
+
   /// 현재 경험치
   final int currentExp;
 
@@ -136,6 +141,21 @@ class PlayerModel {
     }
 
     return copyWith(level: newLevel, currentExp: newExp);
+  }
+
+  /// 코덱스 보너스 적용 (표시/전투용 합산 스탯)
+  PlayerModel applyCodexBonus(CodexBonusState bonusState) {
+    final total = bonusState.totalBonus;
+    final newMaxHp = maxHp + total.hp;
+    final newCurrentHp = currentHp.clamp(0, newMaxHp);
+
+    return copyWith(
+      attack: attack + total.attack,
+      defense: defense + total.defense,
+      luck: luck + total.luck,
+      maxHp: newMaxHp,
+      currentHp: newCurrentHp,
+    );
   }
 
   static int _expToNextForLevel(int level) {

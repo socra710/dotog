@@ -13,12 +13,14 @@ class CodexBonusConfig {
   });
 
   final Rarity rarity;
+
   /// 보너스 레벨 (0 = 비활성화)
   final int level;
   final int attackBonus;
   final int defenseBonus;
   final int hpBonus;
   final int luckBonus;
+
   /// 다음 레벨 업그레이드 비용 (룬)
   final int upgradeCost;
 
@@ -99,7 +101,7 @@ class CodexBonusState {
 
   /// 초기 상태 (모두 비활성화)
   factory CodexBonusState.initial() {
-    return CodexBonusState(
+    return const CodexBonusState(
       common: CodexBonusConfig(
         rarity: Rarity.common,
         level: 0,
@@ -213,10 +215,19 @@ class CodexBonusState {
   /// 전체 보너스 합계
   ({int attack, int defense, int hp, int luck}) get totalBonus {
     return (
-      attack: common.attackBonus + rare.attackBonus + epic.attackBonus + legendary.attackBonus,
-      defense: common.defenseBonus + rare.defenseBonus + epic.defenseBonus + legendary.defenseBonus,
+      attack: common.attackBonus +
+          rare.attackBonus +
+          epic.attackBonus +
+          legendary.attackBonus,
+      defense: common.defenseBonus +
+          rare.defenseBonus +
+          epic.defenseBonus +
+          legendary.defenseBonus,
       hp: common.hpBonus + rare.hpBonus + epic.hpBonus + legendary.hpBonus,
-      luck: common.luckBonus + rare.luckBonus + epic.luckBonus + legendary.luckBonus,
+      luck: common.luckBonus +
+          rare.luckBonus +
+          epic.luckBonus +
+          legendary.luckBonus,
     );
   }
 

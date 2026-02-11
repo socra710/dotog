@@ -51,8 +51,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final size = MediaQuery.sizeOf(context);
     // Firestore 데이터 한 번에 가져오기
     final gameData = ref.watch(gameDataProvider).value;
+    final effectivePlayer = ref.watch(effectivePlayerProvider).value;
     final authData = ref.watch(authProvider);
     final dungeonData = ref.watch(dungeonProvider);
+    final basePlayer = gameData?.player ?? dungeonData.player;
+    final displayPlayer = effectivePlayer ?? basePlayer;
 
     return Scaffold(
       body: Stack(
@@ -203,7 +206,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           ),
                           const SizedBox(height: 16),
                           _CharacterStatsCard(
-                            player: dungeonData.player,
+                            basePlayer: basePlayer,
+                            displayPlayer: displayPlayer,
                             nickname: authData.userData?.nickname ?? '모험가',
                           ),
                         ],
@@ -229,8 +233,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               if (tokens < 1) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
-                                    content:
-                                        Text('토큰이 부족합니다. (필요: 1개, 보유: $tokens개)'),
+                                    content: Text(
+                                        '토큰이 부족합니다. (필요: 1개, 보유: $tokens개)'),
                                     backgroundColor: const Color(0xFFE7C46A),
                                   ),
                                 );
@@ -394,11 +398,13 @@ class _StatPill extends StatelessWidget {
 
 class _CharacterStatsCard extends StatelessWidget {
   const _CharacterStatsCard({
-    required this.player,
+    required this.basePlayer,
+    required this.displayPlayer,
     required this.nickname,
   });
 
-  final PlayerModel player;
+  final PlayerModel basePlayer;
+  final PlayerModel displayPlayer;
   final String nickname;
 
   @override
@@ -417,9 +423,9 @@ class _CharacterStatsCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(
+              const Text(
                 '캐릭터',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
                   color: Color(0xFFF3F8F2),
                   fontWeight: FontWeight.w700,
@@ -447,7 +453,7 @@ class _CharacterStatsCard extends StatelessWidget {
               Expanded(
                 child: _StatTile(
                   label: '레벨',
-                  value: '${player.level}',
+                  value: '${displayPlayer.level}',
                   icon: Icons.star_outline,
                   color: const Color(0xFFE7C46A),
                 ),
@@ -455,16 +461,17 @@ class _CharacterStatsCard extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: _HpStatTile(
-                  currentHp: player.currentHp,
-                  maxHp: player.maxHp,
+                  currentHp: displayPlayer.currentHp,
+                  maxHp: displayPlayer.maxHp,
+                  bonusMaxHp: displayPlayer.maxHp - basePlayer.maxHp,
                 ),
               ),
             ],
           ),
           const SizedBox(height: 8),
           _ExpBar(
-            currentExp: player.currentExp,
-            expToNext: player.expToNext,
+            currentExp: displayPlayer.currentExp,
+            expToNext: displayPlayer.expToNext,
           ),
           const SizedBox(height: 8),
           // 두 번째 행
@@ -473,7 +480,8 @@ class _CharacterStatsCard extends StatelessWidget {
               Expanded(
                 child: _StatTile(
                   label: '공격',
-                  value: '${player.attack}',
+                  value: '${displayPlayer.attack}',
+                  bonusValue: displayPlayer.attack - basePlayer.attack,
                   icon: Icons.flash_on,
                   color: const Color(0xFFFF6B6B),
                 ),
@@ -482,7 +490,8 @@ class _CharacterStatsCard extends StatelessWidget {
               Expanded(
                 child: _StatTile(
                   label: '방어',
-                  value: '${player.defense}',
+                  value: '${displayPlayer.defense}',
+                  bonusValue: displayPlayer.defense - basePlayer.defense,
                   icon: Icons.shield_outlined,
                   color: const Color(0xFF5FD1B7),
                 ),
@@ -491,7 +500,8 @@ class _CharacterStatsCard extends StatelessWidget {
               Expanded(
                 child: _StatTile(
                   label: '행운',
-                  value: '${player.luck}',
+                  value: '${displayPlayer.luck}',
+                  bonusValue: displayPlayer.luck - basePlayer.luck,
                   icon: Icons.local_fire_department_outlined,
                   color: const Color(0xFFFFD93D),
                 ),
@@ -512,9 +522,8 @@ class _ExpBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final progress = expToNext <= 0
-        ? 0.0
-        : (currentExp / expToNext).clamp(0.0, 1.0);
+    final progress =
+        expToNext <= 0 ? 0.0 : (currentExp / expToNext).clamp(0.0, 1.0);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -572,12 +581,14 @@ class _StatTile extends StatelessWidget {
   const _StatTile({
     required this.label,
     required this.value,
+    this.bonusValue,
     required this.icon,
     required this.color,
   });
 
   final String label;
   final String value;
+  final int? bonusValue;
   final IconData icon;
   final Color color;
 
@@ -599,7 +610,7 @@ class _StatTile extends StatelessWidget {
               const SizedBox(width: 4),
               Text(
                 label,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 8,
                   color: Colors.white60,
                   letterSpacing: 0.6,
@@ -608,14 +619,30 @@ class _StatTile extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 12,
-              color: color,
-              fontWeight: FontWeight.w700,
-              fontFamily: 'Galmuri11',
-            ),
+          Row(
+            children: [
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: color,
+                  fontWeight: FontWeight.w700,
+                  fontFamily: 'Galmuri11',
+                ),
+              ),
+              if ((bonusValue ?? 0) > 0) ...[
+                const SizedBox(width: 6),
+                Text(
+                  '+${bonusValue!}',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Color(0xFF5FD1B7),
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'Galmuri11',
+                  ),
+                ),
+              ],
+            ],
           ),
         ],
       ),
@@ -624,10 +651,15 @@ class _StatTile extends StatelessWidget {
 }
 
 class _HpStatTile extends StatelessWidget {
-  const _HpStatTile({required this.currentHp, required this.maxHp});
+  const _HpStatTile({
+    required this.currentHp,
+    required this.maxHp,
+    this.bonusMaxHp = 0,
+  });
 
   final int currentHp;
   final int maxHp;
+  final int bonusMaxHp;
 
   @override
   Widget build(BuildContext context) {
@@ -645,10 +677,10 @@ class _HpStatTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
-              Icon(Icons.favorite_outlined, size: 12, color: const Color(0xFF5FD1B7)),
-              const SizedBox(width: 4),
+              Icon(Icons.favorite_outlined, size: 12, color: Color(0xFF5FD1B7)),
+              SizedBox(width: 4),
               Text(
                 'HP',
                 style: TextStyle(
@@ -689,7 +721,7 @@ class _HpStatTile extends StatelessWidget {
               ),
               const SizedBox(width: 6),
               Text(
-                '$currentHp',
+                '$currentHp/$maxHp',
                 style: const TextStyle(
                   fontSize: 10,
                   color: Color(0xFF5FD1B7),
@@ -699,6 +731,18 @@ class _HpStatTile extends StatelessWidget {
               ),
             ],
           ),
+          if (bonusMaxHp > 0) ...[
+            const SizedBox(height: 4),
+            Text(
+              '+$bonusMaxHp 최대 HP',
+              style: const TextStyle(
+                fontSize: 9,
+                color: Color(0xFF5FD1B7),
+                fontWeight: FontWeight.w700,
+                fontFamily: 'Galmuri11',
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -730,5 +774,3 @@ class _Orb extends StatelessWidget {
     );
   }
 }
-
-

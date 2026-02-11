@@ -57,7 +57,7 @@ class AuthState {
 class AuthNotifier extends Notifier<AuthState> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   late final GoogleSignIn _googleSignIn;
-  
+
   // FirestoreService는 Provider를 통해 가져옴
   FirestoreService get _firestoreService => ref.read(firestoreServiceProvider);
 
@@ -143,8 +143,9 @@ class AuthNotifier extends Notifier<AuthState> {
             idToken: googleAuth.idToken,
           ),
           _firestoreService.getOrCreateGameData(userCredential.user!.uid),
+          _firestoreService.ensureInitialItems(), // 초기 Mock 아이템 추가
         ]);
-        
+
         final userData = results[0] as UserModel?;
 
         // 상태 업데이트 (유저 데이터 포함)
@@ -223,16 +224,16 @@ class AuthNotifier extends Notifier<AuthState> {
 
     try {
       state = state.copyWith(isLoading: true, error: null);
-      
+
       // 게임 데이터 초기화
       await _firestoreService.resetGameData(user.uid);
-      
+
       // 닉네임 변경 횟수 리셋
       await _firestoreService.resetNicknameChangeCount(user.uid);
-      
+
       // 최신 유저 데이터 다시 로드
       final updatedUserData = await _firestoreService.getUser(user.uid);
-      
+
       state = state.copyWith(
         isLoading: false,
         userData: updatedUserData,
