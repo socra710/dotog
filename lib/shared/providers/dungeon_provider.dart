@@ -6,14 +6,14 @@ import '../../features/dungeon/domain/models/combat_log_model.dart';
 import '../../features/dungeon/domain/models/dungeon_state_model.dart';
 import '../../features/dungeon/domain/models/log_type.dart';
 
-/// 던전 생성에 필요한 룬 비용
-const int dungeonCreationCost = 1;
+/// 던전 생성에 필요한 토큰 비용
+const int dungeonTokenCost = 1;
 
-/// 최대 룬 보유량
-const int maxRunes = 10;
+/// 최대 토큰 보유량
+const int maxTokens = 10;
 
-/// 룬 자동 재생 간격 (초)
-const int runeRespawnIntervalSeconds = 5;
+/// 토큰 자동 재생 간격 (초)
+const int tokenRespawnIntervalSeconds = 3600;
 
 /// 던전 상태 Provider
 final dungeonProvider =
@@ -21,43 +21,66 @@ final dungeonProvider =
 
 class DungeonNotifier extends Notifier<DungeonStateModel> {
   Timer? _combatTimer;
-  Timer? _runeTimer;
+  Timer? _tokenTimer;
   bool _isGenerating = false;
 
   @override
   DungeonStateModel build() {
     ref.onDispose(() {
       _combatTimer?.cancel();
-      _runeTimer?.cancel();
+      _tokenTimer?.cancel();
     });
-    _startRuneTimer();
+    _startTokenTimer();
     return DungeonStateModel.initial();
   }
 
-  /// 룬 자동 재생 타이머 시작
-  void _startRuneTimer() {
-    _runeTimer?.cancel();
-    _runeTimer = Timer.periodic(
-      const Duration(seconds: runeRespawnIntervalSeconds),
-      (_) {
-        if (state.player.runes < maxRunes) {
-          state = state.copyWith(
-            player: state.player.copyWith(
-              runes: (state.player.runes + 1).clamp(0, maxRunes),
-            ),
-          );
-        }
-      },
-    );
+  /// 토큰 자동 재생 타이머 시작
+  void _startTokenTimer() {
+    _tokenTimer?.cancel();
+    _tokenTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      _handleTokenTick();
+    });
+  }
+
+  void _handleTokenTick() {
+    final tokens = state.player.tokens;
+    final cooldown = state.tokenCooldownSeconds;
+
+    if (tokens >= maxTokens) {
+      if (cooldown != 0) {
+        state = state.copyWith(tokenCooldownSeconds: 0);
+      }
+      return;
+    }
+
+    if (cooldown <= 0) {
+      state = state.copyWith(
+        tokenCooldownSeconds: tokenRespawnIntervalSeconds,
+      );
+      return;
+    }
+
+    if (cooldown <= 1) {
+      final newTokens = (tokens + 1).clamp(0, maxTokens);
+      final nextCooldown =
+          newTokens >= maxTokens ? 0 : tokenRespawnIntervalSeconds;
+      state = state.copyWith(
+        player: state.player.copyWith(tokens: newTokens),
+        tokenCooldownSeconds: nextCooldown,
+      );
+      return;
+    }
+
+    state = state.copyWith(tokenCooldownSeconds: cooldown - 1);
   }
 
   /// 던전 입장 시작
   Future<void> startDungeon() async {
     if (state.isActive || _isGenerating) return;
 
-    // 룬 확인
-    if (state.player.runes < dungeonCreationCost) {
-      return; // 룬 부족
+    // 토큰 확인
+    if (state.player.tokens < dungeonTokenCost) {
+      return; // 토큰 부족
     }
 
     // 초기화
@@ -69,13 +92,17 @@ class DungeonNotifier extends Notifier<DungeonStateModel> {
 
     _isGenerating = false;
 
-    // 룬 소비 & 던전 시작
+    // 토큰 소비 & 던전 시작
+    final newTokens = state.player.tokens - dungeonTokenCost;
+    final newCooldown = newTokens < maxTokens &&
+            state.tokenCooldownSeconds == 0
+        ? tokenRespawnIntervalSeconds
+        : state.tokenCooldownSeconds;
     state = state.copyWith(
       isActive: true,
       isPaused: false,
-      player: state.player.copyWith(
-        runes: state.player.runes - dungeonCreationCost,
-      ),
+      player: state.player.copyWith(tokens: newTokens),
+      tokenCooldownSeconds: newCooldown,
     );
 
     // 전투 로그 스트림 시작
@@ -160,7 +187,7 @@ class DungeonNotifier extends Notifier<DungeonStateModel> {
   List<CombatLogModel> _generateMockCombatLogs() {
     final random = DateTime.now().millisecondsSinceEpoch;
     return [
-      CombatLogModel.system('룬 $dungeonCreationCost개를 소비해 던전을 생성했습니다.'),
+      CombatLogModel.system('토큰 $dungeonTokenCost개를 소비해 던전을 생성했습니다.'),
       CombatLogModel.combat('망령이 안개 속을 떠돈다. 피해: 6', damage: 6),
       CombatLogModel.combat('자동 반격: 14 피해. 망령이 약화됨.', damage: 14),
       // 10% 확률로 룬 드롭

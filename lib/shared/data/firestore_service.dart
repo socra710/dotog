@@ -1,5 +1,9 @@
+import 'dart:math';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
+import '../models/game_data_model.dart';
 import '../models/user_model.dart';
 
 /// Firestore 컬렉션 경로 상수
@@ -10,8 +14,41 @@ class FirestoreCollections {
 }
 
 /// Firestore 유저 관리 서비스
+/// 
+/// 최적화 기능:
+/// - 유저 데이터 캐싱으로 불필요한 읽기 방지 (5분 TTL)
+/// - 게임 데이터 캐싱으로 반복 조회 최적화
+/// - 배치 작업 지원
+/// 
+/// 사용 방법:
+/// ```dart
+/// // Provider를 통해 사용 (싱글톤)
+/// final firestoreService = ref.read(firestoreServiceProvider);
+/// 
+/// // 유저 조회 (캐싱 적용)
+/// final user = await firestoreService.getUser(uid);
+/// 
+/// // 실시간 스트림 (필요한 경우만 사용)
+/// firestoreService.watchGameData(uid).listen((data) {
+///   // 실시간 업데이트 처리
+/// });
+/// ```
+/// 
+/// 주의사항:
+/// - 직접 인스턴스 생성 금지: FirestoreService() ❌
+/// - 항상 firestoreServiceProvider 사용 ✅
+/// - 실시간 리스너는 필요한 곳에만 사용 (비용 고려)
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  
+  // 유저 데이터 캐시 (메모리 내 캐시)
+  final Map<String, UserModel> _userCache = {};
+  final Map<String, DateTime> _userCacheTimestamp = {};
+  static const Duration _cacheDuration = Duration(minutes: 5);
+  
+  // 게임 데이터 캐시
+  final Map<String, GameDataModel> _gameDataCache = {};
+  final Map<String, DateTime> _gameDataCacheTimestamp = {};
 
   /// users 컬렉션 참조
   CollectionReference<Map<String, dynamic>> get _usersCollection =>
@@ -21,48 +58,205 @@ class FirestoreService {
   DocumentReference<Map<String, dynamic>> _userDoc(String uid) =>
       _usersCollection.doc(uid);
 
+    /// 플레이어 문서 참조
+    DocumentReference<Map<String, dynamic>> _playerDoc(String uid) =>
+      _firestore.collection(FirestoreCollections.players).doc(uid);
+
+  String _generateRandomNickname() {
+    final adjectives = [
+      '어둠의',
+      '고요한',
+      '잊혀진',
+      '잿빛',
+      '은빛',
+      '불꽃',
+      '안개',
+      '황금',
+      '푸른',
+      '차가운',
+      '부서진',
+      '떠도는',
+      '잠든',
+      '깨어난',
+      '저주받은',
+      '축복받은',
+      '영원한',
+      '고대의',
+      '가려진',
+      '빛나는',
+    ];
+    final nouns = [
+      '등불',
+      '망령',
+      '룬',
+      '정찰자',
+      '파수꾼',
+      '방패',
+      '검',
+      '탐험가',
+      '사냥꾼',
+      '나침반',
+      '수호자',
+      '전사',
+      '마법사',
+      '도적',
+      '유령',
+      '기사',
+      '순례자',
+      '현자',
+      '방랑자',
+      '용병',
+    ];
+
+    final random = Random();
+    final adjective = adjectives[random.nextInt(adjectives.length)];
+    final noun = nouns[random.nextInt(nouns.length)];
+    final number = random.nextInt(900) + 100;
+    return '$adjective$noun$number';
+  }
+
   /// Firebase Auth 유저로 Firestore에 유저 생성 또는 업데이트
   ///
   /// 신규 유저: 새 문서 생성
   /// 기존 유저: lastLoginAt만 업데이트
-  Future<UserModel> createOrUpdateUser(User firebaseUser) async {
+  Future<UserModel> createOrUpdateUser(
+    User firebaseUser, {
+    String? accessToken,
+    String? idToken,
+  }) async {
     final userDoc = _userDoc(firebaseUser.uid);
     final docSnapshot = await userDoc.get();
 
     final now = DateTime.now();
 
     if (docSnapshot.exists) {
-      // 기존 유저 - lastLoginAt 업데이트
+      final data = docSnapshot.data();
+      final currentNickname = data?['nickname'] as String?;
+      final shouldSetNickname = currentNickname == null ||
+          currentNickname.trim().isEmpty;
+      final nickname =
+          shouldSetNickname ? _generateRandomNickname() : currentNickname;
+      // 기존 유저 - lastLoginAt 및 토큰 업데이트
       await userDoc.update({
         'lastLoginAt': Timestamp.fromDate(now),
         // 프로필 정보도 최신화 (Google 계정에서 변경될 수 있음)
         'displayName': firebaseUser.displayName,
         'photoURL': firebaseUser.photoURL,
         'email': firebaseUser.email,
+        'accessToken': accessToken,
+        'idToken': idToken,
+        if (shouldSetNickname) 'nickname': nickname,
+        if (shouldSetNickname) 'nicknameSetAt': Timestamp.fromDate(now),
       });
 
       // 업데이트된 데이터 조회
       final userData = UserModel.fromFirestore(await userDoc.get());
+      
+      // 캐시 업데이트
+      _userCache[firebaseUser.uid] = userData;
+      _userCacheTimestamp[firebaseUser.uid] = DateTime.now();
+      
       return userData;
     } else {
+      final nickname = _generateRandomNickname();
       // 신규 유저 - 새 문서 생성
       final newUser = UserModel.create(
         uid: firebaseUser.uid,
         email: firebaseUser.email!,
         displayName: firebaseUser.displayName,
         photoURL: firebaseUser.photoURL,
+      ).copyWith(
+        accessToken: accessToken,
+        idToken: idToken,
+        nickname: nickname,
+        nicknameSetAt: now,
       );
 
       await userDoc.set(newUser.toFirestore());
+      
+      // 캐시 업데이트
+      _userCache[firebaseUser.uid] = newUser;
+      _userCacheTimestamp[firebaseUser.uid] = DateTime.now();
+      
       return newUser;
     }
   }
 
-  /// 유저 정보 조회
+  /// 닉네임 중복 체크
+  Future<bool> isNicknameTaken(String nickname) async {
+    final query = await _usersCollection
+        .where('nickname', isEqualTo: nickname)
+        .limit(1)
+        .get();
+    return query.docs.isNotEmpty;
+  }
+
+  /// 닉네임 변경 (중복 체크 및 1회 무료 제한)
+  Future<UserModel> updateNickname(String uid, String nickname, {bool isPremium = false}) async {
+    final userDoc = _userDoc(uid);
+    final snapshot = await userDoc.get();
+    if (!snapshot.exists) {
+      throw StateError('유저 문서가 존재하지 않습니다.');
+    }
+
+    final userData = UserModel.fromFirestore(snapshot);
+    
+    // 무료 변경 횟수 체크 (프리미엄이 아닐 경우)
+    if (!isPremium && userData.nicknameChangeCount >= 1) {
+      throw StateError('무료 닉네임 변경 횟수를 초과했습니다. 프리미엄 변경을 이용해주세요.');
+    }
+
+    // 중복 체크
+    final isTaken = await isNicknameTaken(nickname);
+    if (isTaken) {
+      throw StateError('이미 사용 중인 닉네임입니다.');
+    }
+
+    await userDoc.update({
+      'nickname': nickname,
+      'nicknameSetAt': Timestamp.fromDate(DateTime.now()),
+      'nicknameChangeCount': userData.nicknameChangeCount + 1,
+    });
+
+    // 캐시 무효화 (다시 조회)
+    _invalidateUserCache(uid);
+    
+    return UserModel.fromFirestore(await userDoc.get());
+  }
+
+  /// 유저 정보 조회 (캐싱 적용)
   Future<UserModel?> getUser(String uid) async {
+    // 캐시 확인
+    if (_userCache.containsKey(uid)) {
+      final cacheTime = _userCacheTimestamp[uid];
+      if (cacheTime != null && 
+          DateTime.now().difference(cacheTime) < _cacheDuration) {
+        return _userCache[uid];
+      }
+    }
+    
+    // 캐시가 없거나 만료되었으면 Firestore에서 조회
     final doc = await _userDoc(uid).get();
     if (!doc.exists) return null;
-    return UserModel.fromFirestore(doc);
+    
+    final user = UserModel.fromFirestore(doc);
+    
+    // 캐시 업데이트
+    _userCache[uid] = user;
+    _userCacheTimestamp[uid] = DateTime.now();
+    
+    return user;
+  }
+  
+  /// 캐시 무효화 (업데이트 후 호출)
+  void _invalidateUserCache(String uid) {
+    _userCache.remove(uid);
+    _userCacheTimestamp.remove(uid);
+  }
+  
+  void _invalidateGameDataCache(String uid) {
+    _gameDataCache.remove(uid);
+    _gameDataCacheTimestamp.remove(uid);
   }
 
   /// 유저 정보 스트림 (실시간)
@@ -78,11 +272,14 @@ class FirestoreService {
     await _userDoc(uid).update({
       'fcmToken': token,
     });
+    
+    // FCM 토큰은 캐시에 영향 없음 (중요한 데이터가 아님)
   }
 
   /// 유저 삭제 (계정 삭제 시)
   Future<void> deleteUser(String uid) async {
     await _userDoc(uid).delete();
+    _invalidateUserCache(uid);
   }
 
   /// 로그인 시간 업데이트
@@ -90,14 +287,132 @@ class FirestoreService {
     await _userDoc(uid).update({
       'lastLoginAt': Timestamp.fromDate(DateTime.now()),
     });
+    // lastLoginAt은 캐시 무효화 불필요 (중요한 데이터가 아님)
+  }
+
+  /// 게임 데이터 조회 (캐싱 적용)
+  Future<GameDataModel?> getGameData(String uid) async {
+    // 캐시 확인
+    if (_gameDataCache.containsKey(uid)) {
+      final cacheTime = _gameDataCacheTimestamp[uid];
+      if (cacheTime != null && 
+          DateTime.now().difference(cacheTime) < _cacheDuration) {
+        return _gameDataCache[uid];
+      }
+    }
+    
+    // 캐시가 없거나 만료되었으면 Firestore에서 조회
+    final doc = await _playerDoc(uid).get();
+    if (!doc.exists) return null;
+    
+    final gameData = GameDataModel.fromFirestore(doc);
+    
+    // 캐시 업데이트
+    _gameDataCache[uid] = gameData;
+    _gameDataCacheTimestamp[uid] = DateTime.now();
+    
+    return gameData;
+  }
+
+  /// 게임 데이터 스트림 (실시간)
+  Stream<GameDataModel?> watchGameData(String uid) {
+    return _playerDoc(uid).snapshots().map((doc) {
+      if (!doc.exists) return null;
+      return GameDataModel.fromFirestore(doc);
+    });
+  }
+
+  /// 게임 데이터 최초 생성
+  Future<GameDataModel> createInitialGameData(String uid) async {
+    final data = GameDataModel.initial();
+    await _playerDoc(uid).set(data.toFirestore());
+    
+    // 캐시 업데이트
+    _gameDataCache[uid] = data;
+    _gameDataCacheTimestamp[uid] = DateTime.now();
+    
+    return data;
+  }
+
+  /// 게임 데이터 존재 보장
+  Future<GameDataModel> getOrCreateGameData(String uid) async {
+    final existing = await getGameData(uid);
+    if (existing != null) return existing;
+    return createInitialGameData(uid);
+  }
+
+  /// 게임 데이터 초기화 (리셋)
+  Future<GameDataModel> resetGameData(String uid) async {
+    final data = GameDataModel.initial();
+    await _playerDoc(uid).set(data.toFirestore());
+    
+    // 캐시 무효화
+    _invalidateGameDataCache(uid);
+    
+    return data;
+  }
+
+  /// 닉네임 변경 횟수 리셋
+  Future<void> resetNicknameChangeCount(String uid) async {
+    await _userDoc(uid).update({
+      'nicknameChangeCount': 0,
+    });
+    _invalidateUserCache(uid);
   }
 
   /// 배치 쓰기 예시 (여러 문서를 한 번에 쓰기)
+  /// 
+  /// 원자성 보장: 모두 성공 또는 모두 실패
+  /// 네트워크 요청 횟수 감소
   Future<void> batchWrite(List<UserModel> users) async {
     final batch = _firestore.batch();
     for (final user in users) {
       batch.set(_userDoc(user.uid), user.toFirestore());
     }
     await batch.commit();
+    
+    // 캐시 무효화
+    for (final user in users) {
+      _invalidateUserCache(user.uid);
+    }
+  }
+  
+  /// 트랜잭션을 사용한 안전한 업데이트 예시
+  /// 
+  /// 동시성 제어가 필요한 경우 사용 (예: 룬 차감, 재화 거래)
+  /// ```dart
+  /// await firestoreService.updateRunesWithTransaction(
+  ///   uid, 
+  ///   amount: -100, // 100룬 차감
+  /// );
+  /// ```
+  Future<void> updateRunesWithTransaction(
+    String uid, {
+    required int amount,
+  }) async {
+    final playerDocRef = _playerDoc(uid);
+    
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(playerDocRef);
+      
+      if (!snapshot.exists) {
+        throw StateError('게임 데이터가 존재하지 않습니다.');
+      }
+      
+      final currentData = GameDataModel.fromFirestore(snapshot);
+      final newRunes = currentData.player.runes + amount;
+      
+      if (newRunes < 0) {
+        throw StateError('룬이 부족합니다.');
+      }
+      
+      transaction.update(playerDocRef, {
+        'player.runes': newRunes,
+        'updatedAt': Timestamp.fromDate(DateTime.now()),
+      });
+    });
+    
+    // 트랜잭션 성공 시 캐시 무효화
+    _invalidateGameDataCache(uid);
   }
 }

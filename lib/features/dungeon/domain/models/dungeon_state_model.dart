@@ -8,6 +8,7 @@ class DungeonStateModel {
     required this.isActive,
     required this.isPaused,
     required this.player,
+    required this.tokenCooldownSeconds,
     required this.logs,
     required this.ontologies,
   });
@@ -16,6 +17,8 @@ class DungeonStateModel {
   final bool isActive;
   final bool isPaused;
   final PlayerModel player;
+  /// 다음 토큰까지 남은 시간 (초)
+  final int tokenCooldownSeconds;
   final List<CombatLogModel> logs;
   final List<String> ontologies; // 특성 태그 (예: '유령의', '부서지기 쉬운')
 
@@ -24,6 +27,7 @@ class DungeonStateModel {
     bool? isActive,
     bool? isPaused,
     PlayerModel? player,
+    int? tokenCooldownSeconds,
     List<CombatLogModel>? logs,
     List<String>? ontologies,
   }) {
@@ -32,6 +36,8 @@ class DungeonStateModel {
       isActive: isActive ?? this.isActive,
       isPaused: isPaused ?? this.isPaused,
       player: player ?? this.player,
+      tokenCooldownSeconds:
+          tokenCooldownSeconds ?? this.tokenCooldownSeconds,
       logs: logs ?? this.logs,
       ontologies: ontologies ?? this.ontologies,
     );
@@ -44,6 +50,7 @@ class DungeonStateModel {
       isActive: false,
       isPaused: false,
       player: PlayerModel.initial(),
+      tokenCooldownSeconds: 0,
       logs: const [],
       ontologies: const [],
     );

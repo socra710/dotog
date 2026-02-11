@@ -74,13 +74,13 @@ class _DungeonScreenState extends ConsumerState<DungeonScreen>
 
     return AtmosphericScaffold(
       title: '던전 실행',
-      subtitle: isGenerating ? 'AI가 던전을 생성하는 중...' : '로그로 변해가는 던전. 기록 중.',
+      subtitle: isGenerating ? '던전을 생성하는 중...' : '로그로 변해가는 던전. 기록 중.',
       badge: _Badge(
         label: isGenerating
             ? '생성중'
             : dungeonState.isPaused
                 ? '일시정지'
-                : '낙하중',
+                : '로그 기록중',
       ),
       actions: [
         if (!isGenerating)
@@ -126,7 +126,7 @@ class _DungeonScreenState extends ConsumerState<DungeonScreen>
         ),
         const SizedBox(height: 24),
         const Text(
-          'AI 던전 생성 중',
+          '던전 생성 중',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w700,
@@ -177,6 +177,8 @@ class _DungeonScreenState extends ConsumerState<DungeonScreen>
               value:
                   '${dungeonState.player.currentHp}/${dungeonState.player.maxHp}',
             ),
+            const SizedBox(width: 10),
+            _StatPill(label: '토큰', value: '${dungeonState.player.tokens}'),
             const SizedBox(width: 10),
             _StatPill(label: '룬', value: '+${dungeonState.player.runes}'),
           ],

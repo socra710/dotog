@@ -331,7 +331,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           ),
           const SizedBox(height: 24),
           // 추가 정보
-          Text(
+          const Text(
             '로그인하면 서비스 약관에 동의하게 됩니다',
             style: TextStyle(
               fontSize: 10,
