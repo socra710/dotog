@@ -194,7 +194,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               const SizedBox(width: 10),
                               _StatPill(
                                 label: '코덱스',
-                                value: '${codexCount}개',
+                                value: '$codexCount개',
                               ),
                               const SizedBox(width: 10),
                               _StatPill(
@@ -208,7 +208,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             tokens >= 10
                                 ? '토큰 가득 참'
                                 : tokenCooldown > 0
-                                    ? '다음 토큰까지 ${_formatTokenCooldown(tokenCooldown)} (${tokens}/${10})'
+                                    ? '다음 토큰까지 ${_formatTokenCooldown(tokenCooldown)} ($tokens/${10})'
                                     : '토큰 가득 참',
                             style: const TextStyle(
                               color: Colors.white60,
