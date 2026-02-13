@@ -6,12 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/dungeon/domain/models/combat_log_model.dart';
 import '../../features/dungeon/domain/models/dungeon_state_model.dart';
 import '../../features/dungeon/domain/models/log_type.dart';
-import '../data/firestore_service.dart';
 import '../models/codex_bonus_model.dart';
 import '../models/item_model.dart';
 import '../models/rarity.dart';
 import 'app_providers.dart';
-import 'game_data_provider.dart';
 
 /// 던전 생성에 필요한 토큰 비용
 const int dungeonTokenCost = 1;

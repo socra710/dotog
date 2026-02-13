@@ -49,13 +49,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    // Firestore 데이터 한 번에 가져오기
-    final gameData = ref.watch(gameDataProvider).value;
-    final effectivePlayer = ref.watch(effectivePlayerProvider).value;
+
+    // ===== Firestore 데이터 구독 (실시간 연동) =====
+    final gameDataAsync = ref.watch(gameDataProvider);
+    final tokenCooldown = ref.watch(dungeonProvider).tokenCooldownSeconds;
     final authData = ref.watch(authProvider);
-    final dungeonData = ref.watch(dungeonProvider);
-    final basePlayer = gameData?.player ?? dungeonData.player;
-    final displayPlayer = effectivePlayer ?? basePlayer;
+
+    // Firestore 데이터 또는 기본값 사용
+    final gameData = gameDataAsync.value;
+    final tokens = gameData?.player.tokens ?? 0;
+    final runes = gameData?.player.runes ?? 0;
+    final codexCount = gameData?.codexEntries.length ?? 0;
+
+    final basePlayer = gameData?.player;
+    final displayPlayer = basePlayer;
 
     return Scaffold(
       body: Stack(
@@ -182,22 +189,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             children: [
                               _StatPill(
                                 label: '토큰',
-                                value: '${dungeonData.player.tokens}',
+                                value: '$tokens',
                               ),
                               const SizedBox(width: 10),
                               _StatPill(
                                 label: '코덱스',
-                                value: '${gameData?.codexEntries.length ?? 0}개',
+                                value: '${codexCount}개',
                               ),
                               const SizedBox(width: 10),
-                              const _StatPill(label: '자동', value: 'ON'),
+                              _StatPill(
+                                label: '룬',
+                                value: '$runes',
+                              ),
                             ],
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            dungeonData.tokenCooldownSeconds > 0
-                                ? '다음 토큰까지 ${_formatTokenCooldown(dungeonData.tokenCooldownSeconds)}'
-                                : '토큰 가득 참',
+                            tokens >= 10
+                                ? '토큰 가득 참'
+                                : tokenCooldown > 0
+                                    ? '다음 토큰까지 ${_formatTokenCooldown(tokenCooldown)} (${tokens}/${10})'
+                                    : '토큰 가득 참',
                             style: const TextStyle(
                               color: Colors.white60,
                               fontSize: 11,
@@ -205,11 +217,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             ),
                           ),
                           const SizedBox(height: 16),
-                          _CharacterStatsCard(
-                            basePlayer: basePlayer,
-                            displayPlayer: displayPlayer,
-                            nickname: authData.userData?.nickname ?? '모험가',
-                          ),
+                          if (displayPlayer != null)
+                            _CharacterStatsCard(
+                              basePlayer: displayPlayer,
+                              displayPlayer: displayPlayer,
+                              nickname: authData.userData?.nickname ?? '모험가',
+                            ),
                         ],
                       ),
                     ),
@@ -229,7 +242,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             subtitle: '도트 던전에서 모험을 시작합니다.',
                             icon: Icons.bolt_outlined,
                             onTap: () {
-                              final tokens = dungeonData.player.tokens;
                               if (tokens < 1) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
@@ -242,7 +254,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 context.go('/dungeon');
                               }
                             },
-                            isDisabled: dungeonData.player.tokens < 1,
+                            isDisabled: tokens < 1,
                           ),
                           const SizedBox(height: 12),
                           _ActionCard(

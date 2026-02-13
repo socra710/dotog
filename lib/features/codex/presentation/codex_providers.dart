@@ -6,7 +6,6 @@ import '../../../shared/models/codex_entry_model.dart';
 import '../../../shared/models/item_model.dart';
 import '../../../shared/models/rarity.dart';
 import '../../../shared/providers/app_providers.dart';
-import '../../../shared/providers/game_data_provider.dart';
 import '../domain/codex_mapper.dart';
 
 // Rarity 필터링을 위한 간단한 notifier
@@ -29,6 +28,7 @@ final codexRarityFilterProvider =
 );
 
 /// Firestore items 컬렉션에서 전체 아이템 목록 조회
+/// 캐싱: 5분 유지
 final globalItemsProvider = FutureProvider<List<ItemModel>>((ref) async {
   final firestoreService = ref.watch(firestoreServiceProvider);
   return await firestoreService.getAllItems();

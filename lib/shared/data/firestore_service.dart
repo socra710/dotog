@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 import '../data/mock_items.dart';
 import '../models/codex_bonus_model.dart';
@@ -14,7 +15,10 @@ import '../models/user_model.dart';
 /// Firestore 컬렉션 경로 상수
 class FirestoreCollections {
   static const String users = 'users';
-  static const String players = 'players'; // 게임 데이터용
+  // TODO: character → players 컬렉션으로 리팩토링
+  // 현재: character 컬렉션이 실제 게임 데이터를 저장 중
+  // 계획: players 컬렉션으로 통일하기
+  static const String players = 'players'; // 게임 데이터용 (예정)
   static const String items = 'items'; // 아이템 데이터용
 }
 
@@ -649,6 +653,62 @@ class FirestoreService {
       throw StateError('아이템 목록 조회 실패: ${e.message}');
     } catch (e) {
       throw StateError('아이템 데이터 처리 오류: ${e.toString()}');
+    }
+  }
+
+  /// 아이템 ID로 조회
+  ///
+  /// 에러 처리:
+  Future<ItemModel?> getItem(String id) async {
+    try {
+      final doc = await _itemsCollection.doc(id).get();
+      if (!doc.exists) return null;
+      return ItemModel.fromFirestore(doc);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Items 컬렉션 초기화 (MockItems 데이터로 모든 아이템 생성)
+  ///
+  /// 앱 첫 실행 시 호출하면 Firestore에 모든 아이템이 한 번에 추가됩니다.
+  /// 이미 있는 아이템은 덮어씀.
+  ///
+  /// 사용:
+  /// ```dart
+  /// await firestoreService.initializeItems();
+  /// ```
+  Future<void> initializeItems() async {
+    try {
+      final batch = _firestore.batch();
+
+      // MockItems의 모든 아이템을 Firestore에 추가
+      for (final item in MockItems.items) {
+        final ref = _itemsCollection.doc(item.id);
+        batch.set(ref, {
+          'id': item.id,
+          'name': item.name,
+          'description': item.description,
+          'rarity': item.rarity.name, // enum을 string으로
+          'attackBonus': item.attackBonus,
+          'defenseBonus': item.defenseBonus,
+          'hpBonus': item.hpBonus,
+          'luckBonus': item.luckBonus,
+        });
+      }
+
+      // 배치 커밋
+      await batch.commit();
+
+      // 캐시 무효화
+      _allItemsCache = null;
+      _allItemsCacheTimestamp = null;
+
+      debugPrint('✅ Items 컬렉션 초기화 완료: ${MockItems.items.length}개 아이템 추가');
+    } on FirebaseException catch (e) {
+      throw StateError('Items 초기화 실패: ${e.message}');
+    } catch (e) {
+      throw StateError('Items 초기화 중 오류: ${e.toString()}');
     }
   }
 
